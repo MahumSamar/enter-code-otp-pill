@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Enter code – OTP pill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body { margin: 0; }
+
+  .otp-section {
+    /* --u is "one design pixel". It shrinks on narrow screens so the
+       372px-wide code row always fits with a 16px gutter. */
+    --u: min(1px, calc((100vw - 32px) / 372));
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --slot: #ecebe5;
+    --ink: #1a1a14;
+    --green: #26bc4e;
+    --red: #d92c4c;
+    --red-soft: #fae3e4;
+    --spring: cubic-bezier(.3, 1.3, .5, 1);
+
+    height: 100vh;
+    height: 100svh;
+    min-height: calc(var(--u) * 140);
+    display: grid;
+    place-items: center;
+    background: var(--bg);
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden;
+  }
+
+  /* ---------- White outer shell (morphs its width between states) ---------- */
+  .otp {
+    position: relative;
+    height: calc(var(--u) * 72);
+    width: calc(var(--u) * 201);
+    border-radius: 999px;
+    background: var(--surface);
+    overflow: hidden;
+    box-shadow:
+      0 0 0 1px rgba(26, 26, 20, .07),
+      0 1px 2px rgba(26, 26, 20, .06),
+      0 calc(var(--u) * 6) calc(var(--u) * 12) calc(var(--u) * -4) rgba(26, 26, 20, .08),
+      0 calc(var(--u) * 22) calc(var(--u) * 36) calc(var(--u) * -14) rgba(26, 26, 20, .12);
+    transition: width .5s var(--spring), transform .2s ease;
+  }
+  .otp.no-anim, .otp.no-anim * { transition: none !important; }
+  .otp[data-state="idle"]:active { transform: scale(.975); }
+
+  .otp__layer {
+    position: absolute;
+    top: calc(var(--u) * 7);
+    left: 50%;
+    width: max-content;
+    opacity: 0;
+    filter: blur(calc(var(--u) * 10));
+    transform: translateX(-50%) scale(.9);
+    pointer-events: none;
+    transition: opacity .28s ease, filter .32s ease, transform .5s var(--spring);
+  }
+  .otp__layer.is-active {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateX(-50%) scale(1);
+    pointer-events: auto;
+  }
+
+  /* ---------- Label pill: Enter code / Verifying / Verified ---------- */
+  .otp__pill {
+    appearance: none;
+    border: 0;
+    margin: 0;
+    font: inherit;
+    color: var(--ink);
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: calc(var(--u) * 14);
+    height: calc(var(--u) * 58);
+    padding: 0 calc(var(--u) * 27) 0 calc(var(--u) * 31);
+    border-radius: 999px;
+    background: var(--slot);
+    overflow: hidden;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color .35s ease, color .35s ease;
+  }
+  .otp__pill:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+  .otp[data-state="verifying"] .otp__pill { cursor: default; }
+  .otp[data-state="verified"] .otp__pill { background: var(--green); color: #fff; }
+
+  .otp__icons {
+    position: relative;
+    flex: none;
+    width: calc(var(--u) * 17);
+    height: calc(var(--u) * 18);
+  }
+  .otp__icon {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    filter: blur(calc(var(--u) * 4));
+    transform: scale(.6);
+    transition: opacity .25s ease, filter .25s ease, transform .35s var(--spring);
+  }
+  .otp[data-state="idle"] .otp__icon--lock,
+  .otp[data-state="entry"] .otp__icon--lock,
+  .otp[data-state="verifying"] .otp__icon--spinner,
+  .otp[data-state="error"] .otp__icon--spinner,
+  .otp[data-state="verified"] .otp__icon--check {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+  .otp__icon--spinner g { transform-origin: 50% 50%; animation: otp-spin .7s linear infinite; }
+
+  .otp__text {
+    position: relative;
+    display: block;
+    font-size: calc(var(--u) * 20);
+    line-height: calc(var(--u) * 26);
+    font-weight: 600;
+    letter-spacing: -.02em;
+    white-space: pre;
+  }
+  .otp__text span { display: inline-block; white-space: pre; }
+  .otp__text .is-in { animation: otp-text-in .38s ease backwards; }
+  .otp__text .is-out {
+    position: absolute;
+    top: 0;
+    animation: otp-text-out .3s ease forwards;
+  }
+
+  /* shine sweep across the green pill */
+  .otp__pill::after {
+    content: "";
+    position: absolute;
+    top: -10%;
+    bottom: -10%;
+    left: 0;
+    width: 34%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .6) 50%, transparent);
+    transform: translateX(-160%) skewX(-20deg);
+    pointer-events: none;
+  }
+  .otp[data-state="verified"] .otp__pill::after { animation: otp-shine .75s ease-in-out .45s both; }
+
+  /* ---------- Code slots ---------- */
+  .otp__slots {
+    display: flex;
+    gap: calc(var(--u) * 8);
+  }
+  .otp__slot {
+    display: grid;
+    place-items: center;
+    width: calc(var(--u) * 53);
+    height: calc(var(--u) * 58);
+    border-radius: calc(var(--u) * 14);
+    background: var(--slot);
+    overflow: hidden;
+    transition: background-color .3s ease;
+  }
+  .otp__slot:first-of-type { border-radius: calc(var(--u) * 29) calc(var(--u) * 14) calc(var(--u) * 14) calc(var(--u) * 29); }
+  .otp__slot:last-of-type  { border-radius: calc(var(--u) * 14) calc(var(--u) * 29) calc(var(--u) * 29) calc(var(--u) * 14); }
+
+  .otp__digit {
+    font-size: calc(var(--u) * 26);
+    line-height: 1;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    transition: color .25s ease, opacity .26s ease-in, filter .26s ease-in, transform .26s ease-in;
+  }
+  .otp__digit.is-in { animation: otp-digit-in .36s var(--spring) backwards; }
+
+  .otp__slots.is-error .otp__slot { background: var(--red-soft); }
+  .otp__slots.is-error .otp__digit { color: var(--red); }
+  .otp__slots.is-dropping .otp__digit {
+    opacity: 0;
+    filter: blur(calc(var(--u) * 5));
+    transform: translateY(70%);
+    transition-delay: calc((5 - var(--n)) * 45ms);
+  }
+
+  /* sliding focus ring + caret */
+  .otp__ring {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: grid;
+    place-items: center;
+    width: calc(var(--u) * 53);
+    height: calc(var(--u) * 58);
+    border: calc(var(--u) * 2) solid var(--ink);
+    border-radius: calc(var(--u) * 14);
+    transform: translateX(calc(var(--i, 0) * var(--u) * 61));
+    opacity: 0;
+    filter: blur(calc(var(--u) * 5));
+    pointer-events: none;
+    transition:
+      transform .3s var(--spring),
+      border-radius .3s ease,
+      opacity .2s ease,
+      filter .2s ease;
+  }
+  .otp__ring.is-first { border-radius: calc(var(--u) * 29) calc(var(--u) * 14) calc(var(--u) * 14) calc(var(--u) * 29); }
+  .otp__ring.is-last  { border-radius: calc(var(--u) * 14) calc(var(--u) * 29) calc(var(--u) * 29) calc(var(--u) * 14); }
+  .otp__ring.is-visible { opacity: 1; filter: blur(0); }
+  .otp__ring::after {
+    content: "";
+    width: calc(var(--u) * 1.5);
+    height: calc(var(--u) * 22);
+    border-radius: 1px;
+    background: var(--ink);
+    animation: otp-caret 1.1s steps(1) infinite;
+  }
+
+  /* real input: invisible, covers the slots so taps open the keyboard */
+  .otp__input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: transparent;
+    caret-color: transparent;
+    font-size: 16px; /* prevents iOS zoom-on-focus */
+    opacity: 0;
+    outline: none;
+    cursor: text;
+  }
+
+  .otp__sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  @keyframes otp-spin { to { transform: rotate(360deg); } }
+  @keyframes otp-caret { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
+  @keyframes otp-digit-in {
+    from { opacity: 0; filter: blur(calc(var(--u) * 6)); transform: translateY(45%) scale(.8); }
+  }
+  @keyframes otp-text-in {
+    from { opacity: 0; filter: blur(calc(var(--u) * 5)); }
+  }
+  @keyframes otp-text-out {
+    to { opacity: 0; filter: blur(calc(var(--u) * 5)); }
+  }
+  @keyframes otp-shine {
+    from { transform: translateX(-160%) skewX(-20deg); }
+    to   { transform: translateX(460%) skewX(-20deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .otp, .otp * { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+    .otp__icon--spinner g { animation-duration: .7s !important; }
+  }
+</style>
+</head>
+<body>
+
+<section class="otp-section">
+  <div class="otp no-anim" data-state="idle">
+
+    <!-- Label pill -->
+    <div class="otp__layer otp__layer--pill is-active">
+      <button class="otp__pill" type="button">
+        <span class="otp__icons" aria-hidden="true">
+          <svg class="otp__icon otp__icon--lock" viewBox="0 0 17 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1.5" y="7.5" width="14" height="9.5" rx="3.2"/>
+            <path d="M4.6 7.5V5.2a3.9 3.9 0 0 1 7.8 0v2.3"/>
+          </svg>
+          <svg class="otp__icon otp__icon--spinner" viewBox="0 0 17 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <g>
+              <circle cx="8.5" cy="9" r="7" opacity=".3"/>
+              <path d="M8.5 2a7 7 0 0 1 7 7"/>
+            </g>
+          </svg>
+          <svg class="otp__icon otp__icon--check" viewBox="0 0 17 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 9.8l4.2 4.2L15 4.6"/>
+          </svg>
+        </span>
+        <span class="otp__text"><span>Enter code</span></span>
+      </button>
+    </div>
+
+    <!-- Code slots -->
+    <div class="otp__layer otp__layer--slots">
+      <div class="otp__slots" aria-hidden="true">
+        <span class="otp__slot"><span class="otp__digit" style="--n:0"></span></span>
+        <span class="otp__slot"><span class="otp__digit" style="--n:1"></span></span>
+        <span class="otp__slot"><span class="otp__digit" style="--n:2"></span></span>
+        <span class="otp__slot"><span class="otp__digit" style="--n:3"></span></span>
+        <span class="otp__slot"><span class="otp__digit" style="--n:4"></span></span>
+        <span class="otp__slot"><span class="otp__digit" style="--n:5"></span></span>
+        <span class="otp__ring is-first"></span>
+      </div>
+      <input class="otp__input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+             autocomplete="one-time-code" autocorrect="off" spellcheck="false"
+             aria-label="6-digit verification code" tabindex="-1">
+    </div>
+
+    <span class="otp__sr" role="status" aria-live="polite"></span>
+  </div>
+</section>
+
+<script>
+(function () {
+  var CORRECT_CODE = '123456';   // the code that verifies
+  var LENGTH = 6;
+  var VERIFY_MS = 1000;          // how long "Verifying" shows
+
+  var root = document.querySelector('.otp');
+  var pillLayer = root.querySelector('.otp__layer--pill');
+  var slotsLayer = root.querySelector('.otp__layer--slots');
+  var pill = root.querySelector('.otp__pill');
+  var text = root.querySelector('.otp__text');
+  var slots = root.querySelector('.otp__slots');
+  var digits = Array.prototype.slice.call(root.querySelectorAll('.otp__digit'));
+  var ring = root.querySelector('.otp__ring');
+  var input = root.querySelector('.otp__input');
+  var status = root.querySelector('.otp__sr');
+
+  var state = 'idle';
+  var value = '';
+  var label = 'Enter code';
+  var timers = [];
+
+  function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+  /* Shell width follows whichever layer is showing */
+  function fit() {
+    var layer = (state === 'entry' || state === 'error') ? slotsLayer : pillLayer;
+    var pad = slotsLayer.offsetTop; // 7 design px, already scaled
+    root.style.width = (layer.offsetWidth + pad * 2) + 'px';
+  }
+
+  function setState(next) {
+    state = next;
+    root.dataset.state = next;
+    var showSlots = next === 'entry' || next === 'error';
+    slotsLayer.classList.toggle('is-active', showSlots);
+    pillLayer.classList.toggle('is-active', !showSlots);
+    input.tabIndex = showSlots ? 0 : -1;
+    pill.tabIndex = showSlots ? -1 : 0;
+    fit();
+  }
+
+  /* Swap the label, keeping the shared prefix still and blurring only the tail */
+  function setLabel(next, animate) {
+    var p = 0;
+    while (animate && p < label.length && p < next.length && label[p] === next[p]) p++;
+    var oldTail = label.slice(p);
+    var keep = document.createElement('span');
+    keep.textContent = next.slice(0, p);
+    var tail = document.createElement('span');
+    tail.textContent = next.slice(p);
+    text.textContent = '';
+    text.appendChild(keep);
+    text.appendChild(tail);
+    if (animate) {
+      tail.className = 'is-in';
+      if (oldTail) {
+        var out = document.createElement('span');
+        out.className = 'is-out';
+        out.textContent = oldTail;
+        out.style.left = keep.offsetWidth + 'px';
+        text.appendChild(out);
+        setTimeout(function () { out.remove(); }, 320);
+      }
+    }
+    label = next;
+  }
+
+  function renderDigits(prev) {
+    digits.forEach(function (el, i) {
+      var ch = value[i] || '';
+      if (ch === (prev[i] || '')) return;
+      el.textContent = ch;
+      el.classList.remove('is-in');
+      if (ch) { void el.offsetWidth; el.classList.add('is-in'); }
+    });
+    var i = Math.min(value.length, LENGTH - 1);
+    ring.style.setProperty('--i', i);
+    ring.classList.toggle('is-first', i === 0);
+    ring.classList.toggle('is-last', i === LENGTH - 1);
+    ring.classList.toggle('is-visible', state === 'entry' && value.length < LENGTH);
+  }
+
+  function setValue(next) {
+    var prev = value;
+    value = next;
+    input.value = next;
+    renderDigits(prev);
+  }
+
+  function open() {
+    clearTimers();
+    slots.classList.remove('is-error', 'is-dropping');
+    setValue('');
+    setState('entry');
+    renderDigits('');
+    input.focus({ preventScroll: true });
+  }
+
+  function verify() {
+    ring.classList.remove('is-visible');
+    later(function () {
+      setLabel('Verifying', false);
+      setState('verifying');
+      status.textContent = 'Verifying';
+      later(value === CORRECT_CODE ? succeed : fail, VERIFY_MS);
+    }, 280);
+  }
+
+  function succeed() {
+    setLabel('Verified', true);
+    setState('verified');
+    status.textContent = 'Verified';
+    input.blur();
+  }
+
+  function fail() {
+    digits.forEach(function (el) { el.classList.remove('is-in'); });
+    slots.classList.add('is-error');
+    setState('error');
+    status.textContent = 'Incorrect code, try again';
+    later(function () { slots.classList.add('is-dropping'); }, 380);
+    later(function () { slots.classList.remove('is-error'); }, 700);
+    later(function () {
+      value = '';
+      input.value = '';
+      digits.forEach(function (el) { el.textContent = ''; });
+      slots.classList.remove('is-dropping');
+      state = 'entry';
+      root.dataset.state = 'entry';
+      renderDigits('');
+    }, 900);
+  }
+
+  pill.addEventListener('click', function () {
+    if (state === 'idle') open();
+    else if (state === 'verified') {   // click again to replay
+      clearTimers();
+      setLabel('Enter code', false);
+      setState('idle');
+    }
+  });
+
+  input.addEventListener('input', function () {
+    if (state !== 'entry') { input.value = value; return; }
+    setValue(input.value.replace(/\D/g, '').slice(0, LENGTH));
+    if (value.length === LENGTH) verify();
+  });
+
+  /* keep the native caret at the end so typing always appends */
+  input.addEventListener('focus', function () {
+    var n = input.value.length;
+    try { input.setSelectionRange(n, n); } catch (e) {}
+  });
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && state === 'entry') {
+      setLabel('Enter code', false);
+      setState('idle');
+      pill.focus({ preventScroll: true });
+    }
+    if (e.key.indexOf('Arrow') === 0 || e.key === 'Home') e.preventDefault();
+  });
+
+  function refit() {
+    root.classList.add('no-anim');
+    fit();
+    void root.offsetWidth;
+    root.classList.remove('no-anim');
+  }
+  window.addEventListener('resize', refit);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(refit);
+  refit();
+})();
+</script>
+</body>
+</html>
